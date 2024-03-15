@@ -5,6 +5,10 @@
 // should include the name of the empty Employee field. In main, use errors.As
 // to check for this error. Print out a message that includes the field name.
 
+// Rather than returning the first error found, return back a single error
+// that contains all errors discovered during validation. Update the code in
+// main to properly report multiple errors.
+
 package main
 
 import (
@@ -37,18 +41,30 @@ func main() {
 			continue
 		}
 		err = ValidateEmployee(emp)
-		if err != nil {
-			var errEmptyField EmptyFieldError
-			if errors.Is(err, ErrInvalidID) {
-				fmt.Printf("record %d: %+v invalid id: %v\n", count, emp, emp.ID)
-			} else if errors.As(err, &errEmptyField) {
-				fmt.Printf("record %d: %+v missing field: %v\n", count, emp, err)
-			} else {
-				fmt.Printf("record %d: %+v error: %v\n", count, emp, err)
+		processErr := func(e error) {
+			if e != nil {
+				var errEmptyField EmptyFieldError
+				if errors.Is(e, ErrInvalidID) {
+					fmt.Printf("record %d: %+v invalid id: %v\n", count, emp, emp.ID)
+				} else if errors.As(e, &errEmptyField) {
+					fmt.Printf("record %d: %+v missing field: %v\n", count, emp, e)
+				} else {
+					fmt.Printf("record %d: %+v error: %v\n", count, emp, e)
+				}
 			}
-			continue
 		}
-		fmt.Printf("record %d: %+v\n", count, emp)
+		switch err := err.(type) {
+		case interface {Unwrap() error}:
+			innerErr := err.Unwrap()
+			processErr(innerErr)
+		case interface {Unwrap() []error}:
+			innerErrs := err.Unwrap()
+			for _, innerErr := range innerErrs {
+				processErr(innerErr)
+			}
+		default:
+			fmt.Printf("record %d: %+v\n", count, emp)
+		}
 	}
 }
 
@@ -109,20 +125,24 @@ var (
 )
 
 func ValidateEmployee(e Employee) error {
+	var errs []error
 	if len(e.ID) == 0 {
-		return EmptyFieldError{"ID"}
+		errs = append(errs, EmptyFieldError{"ID"})
 	}
 	if !validID.MatchString(e.ID) {
-		return ErrInvalidID
+		errs = append(errs, ErrInvalidID)
 	}
 	if len(e.FirstName) == 0 {
-		return EmptyFieldError{"FirstName"}
+		errs = append(errs, EmptyFieldError{"FirstName"})
 	}
 	if len(e.LastName) == 0 {
-		return EmptyFieldError{"LastName"}
+		errs = append(errs, EmptyFieldError{"LastName"})
 	}
 	if len(e.Title) == 0 {
-		return EmptyFieldError{"Title"}
+		errs = append(errs, EmptyFieldError{"Title"})
+	}
+	if len(errs) > 0 {
+		return errors.Join(errs...)
 	}
 	return nil
 }
