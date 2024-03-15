@@ -1,3 +1,3 @@
-module com.github/aaolen/learning-go
+module github.com/aaolen/learning-go
 
 go 1.22.0
